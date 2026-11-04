@@ -4,7 +4,7 @@ import tkinter as tk
 
 from src.commands import execute_command
 from src.parser import parse_command
-
+from src.script_runner import read_script
 
 def append_output(output, message):
     """Добавить текст в терминал и прокрутить его вниз."""
@@ -13,27 +13,49 @@ def append_output(output, message):
     output.see("end")
     output.configure(state="disabled")
 
-
-def handle_input(root, output, entry):
-    """Обработать строку из поля ввода после нажатия Enter."""
-    line = entry.get()
-    entry.delete(0, "end")
+def execute_line(root, output, line):
+    """Выполнить команду и сообщить, нужно ли остановиться."""
     append_output(output, f"vfs:/$ {line}")
 
     try:
         parts = parse_command(line)
     except ValueError as error:
         append_output(output, f"Ошибка разбора: {error}")
-        return
+        return True
 
     result, should_exit = execute_command(parts)
+
     if result:
         append_output(output, result)
+
     if should_exit:
         root.destroy()
 
+    return should_exit or result.startswith("Ошибка:")
 
-def run_gui():
+def handle_input(root, output, entry):
+    """Обработать ввод команды пользователем."""
+    line = entry.get()
+    entry.delete(0, "end")
+
+    execute_line(root, output, line)
+
+
+def run_startup_script(root, output, path):
+    """Выполнить команды стартового скрипта до первой ошибки."""
+    try:
+        commands = read_script(path)
+    except OSError as error:
+        append_output(output, f"Ошибка чтения скрипта: {error}")
+        return
+
+    for line in commands:
+        stop = execute_line(root, output, line)
+
+        if stop:
+            break
+
+def run_gui(config):
     """Создать окно терминала и запустить цикл событий Tkinter."""
     root = tk.Tk()
     root.title("VFS — эмулятор командной строки")
@@ -61,8 +83,15 @@ def run_gui():
     entry.pack(side="left", fill="x", expand=True, padx=(8, 0), ipady=7)
     entry.bind("<Return>", lambda event: handle_input(root, output, entry))
 
-    append_output(output, "VFS — этап 1 (REPL)")
+    append_output(output, "VFS — этап 2 (Конфигурация)")
     append_output(output, "Команды: ls, cd, exit")
+
+    append_output(output, f"Путь к VFS: {config.vfs or 'Не указан'}")
+    append_output(output, f"Стартовый скрипт: {config.script or 'Не указан'}")
+
+    if config.script:
+        root.after( 0, lambda: run_startup_script(root, output, config.script) )
+
     entry.focus_set()
     root.mainloop()
 
