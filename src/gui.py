@@ -5,6 +5,8 @@ import tkinter as tk
 from src.commands import execute_command
 from src.parser import parse_command
 from src.script_runner import read_script
+from zipfile import BadZipFile
+from src.vfs import load_vfs
 
 def append_output(output, message):
     """Добавить текст в терминал и прокрутить его вниз."""
@@ -55,6 +57,24 @@ def run_startup_script(root, output, path):
         if stop:
             break
 
+def mount_vfs(root, output, path):
+    """Загрузить виртуальную файловую систему в память."""
+    if not path:
+        return
+
+    try:
+        directories, files = load_vfs(path)
+    except (OSError, BadZipFile, ValueError) as error:
+        append_output(output, f"Ошибка загрузки VFS: {error}")
+        return
+
+    root.vfs = (directories, files)
+
+    append_output(
+        output,
+        f"VFS загружена: {len(directories)} папок, {len(files)} файлов"
+    )
+
 def run_gui(config):
     """Создать окно терминала и запустить цикл событий Tkinter."""
     root = tk.Tk()
@@ -88,6 +108,9 @@ def run_gui(config):
 
     append_output(output, f"Путь к VFS: {config.vfs or 'Не указан'}")
     append_output(output, f"Стартовый скрипт: {config.script or 'Не указан'}")
+
+    root.vfs = None
+    mount_vfs(root, output, config.vfs)
 
     if config.script:
         root.after( 0, lambda: run_startup_script(root, output, config.script) )
